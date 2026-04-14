@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Three.js Moving Square Ball Launcher</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">3D Moving Square Ball Launcher (Three.js)</div>
+    <div class="canvas-shell" id="container">
+      <canvas id="c" aria-label="3D launcher canvas"></canvas>
+      <div class="stats" id="info">balls: 0 | points: 0</div>
+      <div class="controls">
+        <label>
+          <span>vel x</span>
+          <input id="velX" type="range" min="0.5" max="10" step="0.1" value="4.2" />
+          <span id="velXVal">4.2</span>
+        </label>
+        <label>
+          <span>vel y (depth)</span>
+          <input id="velY" type="range" min="0.3" max="10" step="0.1" value="1.8" />
+          <span id="velYVal">1.8</span>
+        </label>
+      </div>
+      <div class="hud">
+        <button id="btnLaunch" type="button">Launch ball</button>
+        <button id="btnReset" type="button">Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
