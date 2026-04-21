@@ -5,6 +5,10 @@ const velXInput = document.getElementById("velX");
 const velYInput = document.getElementById("velY");
 const velXVal = document.getElementById("velXVal");
 const velYVal = document.getElementById("velYVal");
+const aimThetaInput = document.getElementById("aimTheta");
+const aimRInput = document.getElementById("aimR");
+const aimThetaVal = document.getElementById("aimThetaVal");
+const aimRVal = document.getElementById("aimRVal");
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
 renderer.shadowMap.enabled = true;
@@ -16,6 +20,14 @@ scene.background = new THREE.Color(0xf4f2ee);
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 200);
 camera.position.set(0, 9.5, -20);
 camera.lookAt(0, 2, 10);
+
+const cameraController = window.createCameraController
+  ? window.createCameraController({
+      camera,
+      canvas,
+      initialTarget: new THREE.Vector3(0, 2, 10)
+    })
+  : null;
 
 const ambient = new THREE.AmbientLight(0xffffff, 0.55);
 scene.add(ambient);
@@ -45,18 +57,18 @@ grid.position.y = 0.01;
 scene.add(grid);
 
 const square = new THREE.Mesh(
-  new THREE.BoxGeometry(2, 0.4, 2),
+  new THREE.BoxGeometry(3, 0.5, 3),
   new THREE.MeshLambertMaterial({ color: 0x2c6fdb })
 );
 square.castShadow = true;
 const squareBaseY = 0.3;
 const xBounds = { min: -5.5, max: 5.5 };
-const zBounds = { min: -2.0, max: 6.4 };
-let squareDirX = 1;
-let squareDirZ = 1;
+const zBounds = { min: -2.8, max: 3.8 };
+const squareStartX = xBounds.min;
+const squareStartZ = zBounds.min;
 let squareSpeedX = Number(velXInput.value);
 let squareSpeedY = Number(velYInput.value);
-square.position.set(0, squareBaseY, 0);
+square.position.set(squareStartX, squareBaseY, squareStartZ);
 scene.add(square);
 
 function updateRobotSpeeds() {
@@ -70,22 +82,18 @@ velXInput.addEventListener("input", updateRobotSpeeds);
 velYInput.addEventListener("input", updateRobotSpeeds);
 updateRobotSpeeds();
 
-const targetRadius = 1.1;
-const targetThickness = 0.24;
-const targetTopY = 2.7;
-const targetPosition = new THREE.Vector3(0, targetTopY - targetThickness * 0.5, 10.2);
-
-const targetPole = new THREE.Mesh(
-  new THREE.CylinderGeometry(0.14, 0.14, targetTopY - targetThickness, 22),
-  new THREE.MeshLambertMaterial({ color: 0x7a7263 })
-);
-targetPole.position.set(targetPosition.x, (targetTopY - targetThickness) * 0.5, targetPosition.z);
-targetPole.castShadow = true;
-scene.add(targetPole);
+const targetWidth = 2;
+const targetDepth = 2;
+const targetHeight = 6;
+const targetTopY = targetHeight;
+const targetHalfWidth = targetWidth * 0.5;
+const targetHalfDepth = targetDepth * 0.5;
+const targetHalfHeight = targetHeight * 0.5;
+const targetPosition = new THREE.Vector3(0, targetHalfHeight, 8);
 
 const targetTopMaterial = new THREE.MeshLambertMaterial({ color: 0xcc4343 });
 const targetTop = new THREE.Mesh(
-  new THREE.CylinderGeometry(targetRadius, targetRadius, targetThickness, 44),
+  new THREE.BoxGeometry(targetWidth, targetHeight, targetDepth),
   targetTopMaterial
 );
 targetTop.position.copy(targetPosition);
@@ -93,32 +101,67 @@ targetTop.receiveShadow = true;
 targetTop.castShadow = true;
 scene.add(targetTop);
 
-const targetRing = new THREE.Mesh(
-  new THREE.RingGeometry(0.36, 0.7, 36),
-  new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide })
+const aimMarkerMaterial = new THREE.MeshLambertMaterial({ color: 0x2f556e });
+const aimMarkerRing = new THREE.Mesh(
+  new THREE.TorusGeometry(0.35, 0.07, 12, 28),
+  aimMarkerMaterial
 );
-targetRing.rotation.x = -Math.PI / 2;
-targetRing.position.set(targetPosition.x, targetTopY + 0.003, targetPosition.z);
-scene.add(targetRing);
+aimMarkerRing.rotation.x = Math.PI / 2;
+aimMarkerRing.castShadow = true;
+scene.add(aimMarkerRing);
 
-const targetCore = new THREE.Mesh(
-  new THREE.CircleGeometry(0.24, 32),
-  new THREE.MeshLambertMaterial({ color: 0x1f1f1f, side: THREE.DoubleSide })
+const aimMarkerDot = new THREE.Mesh(
+  new THREE.SphereGeometry(0.12, 14, 14),
+  aimMarkerMaterial
 );
-targetCore.rotation.x = -Math.PI / 2;
-targetCore.position.set(targetPosition.x, targetTopY + 0.004, targetPosition.z);
-scene.add(targetCore);
+aimMarkerDot.castShadow = true;
+scene.add(aimMarkerDot);
 
-const ballRadius = 0.35;
+const ballRadius = 0.5;
 const sharedBallGeometry = new THREE.SphereGeometry(ballRadius, 28, 28);
 
 const balls = [];
 let score = 0;
 let hitFlashTime = 0;
 
-const gravity = -9.8;
+const gravity = -32;
 const restitution = 0.6;
 const floorY = ballRadius;
+const targetCollisionRestitution = 0.44;
+const targetCollisionFriction = 0.92;
+const aimMinRadius = 0;
+const aimCenterX = 0;
+const aimCenterZ = 0;
+
+function getDesiredAimPoint() {
+  const thetaRad = (Number(aimThetaInput.value) * Math.PI) / 180;
+  const r = Math.max(aimMinRadius, Number(aimRInput.value));
+  const offsetX = Math.sin(thetaRad) * r;
+  const offsetZ = Math.cos(thetaRad) * r;
+  return new THREE.Vector3(
+    aimCenterX + offsetX,
+    targetTopY,
+    aimCenterZ + offsetZ
+  );
+}
+
+function updateAimMarker() {
+  const aimPoint = getDesiredAimPoint();
+  aimMarkerRing.position.set(aimPoint.x, targetTopY + 0.07, aimPoint.z);
+  aimMarkerDot.position.set(aimPoint.x, targetTopY + 0.15, aimPoint.z);
+}
+
+function updateAimUIAndMarker() {
+  const thetaDeg = Number(aimThetaInput.value);
+  const r = Number(aimRInput.value);
+  aimThetaVal.textContent = thetaDeg.toFixed(0) + "°";
+  aimRVal.textContent = r.toFixed(1);
+  updateAimMarker();
+}
+
+aimThetaInput.addEventListener("input", updateAimUIAndMarker);
+aimRInput.addEventListener("input", updateAimUIAndMarker);
+updateAimUIAndMarker();
 
 function launchBall() {
   const mesh = new THREE.Mesh(
@@ -132,18 +175,97 @@ function launchBall() {
   scene.add(mesh);
 
   // Balls inherit the square's current motion at launch.
-  const inheritedVx = square.userData.vx ?? (squareDirX * squareSpeedX);
-  const inheritedVz = square.userData.vz ?? (squareDirZ * squareSpeedY);
-  const toTargetX = targetPosition.x - mesh.position.x;
-  const toTargetZ = targetPosition.z - mesh.position.z;
-  const travelTime = 1.15;
+  const inheritedVx = square.userData.vx ?? squareSpeedX;
+  const inheritedVz = square.userData.vz ?? squareSpeedY;
+  const aimPoint = getDesiredAimPoint();
+  const toTargetX = aimPoint.x - mesh.position.x;
+  const toTargetZ = aimPoint.z - mesh.position.z;
+  const horizontalDistance = Math.hypot(toTargetX, toTargetZ);
+  const gravityMag = -gravity;
+  const targetY = aimPoint.y + ballRadius * 0.3;
+  const toTargetY = targetY - mesh.position.y;
+  const minDescendingTime = Math.sqrt(Math.max(0, (2 * toTargetY) / gravityMag)) + 0.14;
+  const speedBasedTime = horizontalDistance / 9.5;
+  const travelTime = Math.max(minDescendingTime, Math.min(1.9, Math.max(1.05, speedBasedTime)));
+  const launchVy = (toTargetY - 0.5 * gravity * travelTime * travelTime) / travelTime;
+  const maxVyForDescentAtImpact = gravityMag * travelTime - 0.25;
+  const adjustedVy = Math.min(launchVy + (Math.random() * 0.12 - 0.06), maxVyForDescentAtImpact);
   balls.push({
     mesh,
-    vx: inheritedVx + (toTargetX / travelTime) + (Math.random() * 0.6 - 0.3),
-    vy: 6.6 + Math.random() * 1.1,
-    vz: inheritedVz + (toTargetZ / travelTime) + Math.random() * 0.7,
-    bounces: 0
+    vx: inheritedVx * 0.28 + (toTargetX / travelTime) + (Math.random() * 0.2 - 0.1),
+    vy: adjustedVy,
+    vz: inheritedVz * 0.28 + (toTargetZ / travelTime) + (Math.random() * 0.18 - 0.07),
+    bounces: 0,
+    hasPeaked: false
   });
+}
+
+function resolveBallBoxCollision(ball, centerX, centerY, centerZ, halfWidth, halfHeight, halfDepth) {
+  const p = ball.mesh.position;
+  const minX = centerX - halfWidth;
+  const maxX = centerX + halfWidth;
+  const minY = centerY - halfHeight;
+  const maxY = centerY + halfHeight;
+  const minZ = centerZ - halfDepth;
+  const maxZ = centerZ + halfDepth;
+
+  const closestX = Math.max(minX, Math.min(maxX, p.x));
+  const closestY = Math.max(minY, Math.min(maxY, p.y));
+  const closestZ = Math.max(minZ, Math.min(maxZ, p.z));
+
+  let nx = p.x - closestX;
+  let ny = p.y - closestY;
+  let nz = p.z - closestZ;
+  let dist = Math.hypot(nx, ny, nz);
+  if (dist >= ballRadius) {
+    return false;
+  }
+
+  if (dist < 0.0001) {
+    const localX = p.x - centerX;
+    const localY = p.y - centerY;
+    const localZ = p.z - centerZ;
+    const xGap = halfWidth - Math.abs(localX);
+    const yGap = halfHeight - Math.abs(localY);
+    const zGap = halfDepth - Math.abs(localZ);
+
+    if (xGap <= yGap && xGap <= zGap) {
+      nx = Math.sign(localX) || 1;
+      ny = 0;
+      nz = 0;
+    } else if (yGap <= zGap) {
+      nx = 0;
+      ny = Math.sign(localY) || 1;
+      nz = 0;
+    } else {
+      nx = 0;
+      ny = 0;
+      nz = Math.sign(localZ) || 1;
+    }
+    dist = 0;
+  } else {
+    nx /= dist;
+    ny /= dist;
+    nz /= dist;
+  }
+
+  const penetration = ballRadius - dist;
+  p.x += nx * penetration;
+  p.y += ny * penetration;
+  p.z += nz * penetration;
+
+  const normalSpeed = ball.vx * nx + ball.vy * ny + ball.vz * nz;
+  if (normalSpeed < 0) {
+    const impulse = -(1 + targetCollisionRestitution) * normalSpeed;
+    ball.vx += impulse * nx;
+    ball.vy += impulse * ny;
+    ball.vz += impulse * nz;
+
+    ball.vx *= targetCollisionFriction;
+    ball.vz *= targetCollisionFriction;
+  }
+
+  return true;
 }
 
 function resetScene() {
@@ -153,9 +275,7 @@ function resetScene() {
   }
   balls.length = 0;
   score = 0;
-  square.position.set(0, squareBaseY, 0);
-  squareDirX = 1;
-  squareDirZ = 1;
+  square.position.set(squareStartX, squareBaseY, squareStartZ);
 }
 
 document.getElementById("btnLaunch").addEventListener("click", launchBall);
@@ -182,35 +302,31 @@ function animate(nowMs) {
   const dt = Math.min(0.033, Math.max(0.001, now - previous));
   previous = now;
 
-  const oldX = square.position.x;
-  const oldZ = square.position.z;
-  square.position.x += squareDirX * squareSpeedX * dt;
-  square.position.z += squareDirZ * squareSpeedY * dt;
+  square.position.x += squareSpeedX * dt;
+  square.position.z += squareSpeedY * dt;
   square.position.y = squareBaseY;
 
-  if (square.position.x >= xBounds.max) {
-    square.position.x = xBounds.max;
-    squareDirX = -1;
-  } else if (square.position.x <= xBounds.min) {
-    square.position.x = xBounds.min;
-    squareDirX = 1;
+  if (square.position.x > xBounds.max) {
+    square.position.x = squareStartX;
   }
 
-  if (square.position.z >= zBounds.max) {
-    square.position.z = zBounds.max;
-    squareDirZ = -1;
-  } else if (square.position.z <= zBounds.min) {
-    square.position.z = zBounds.min;
-    squareDirZ = 1;
+  if (square.position.z > zBounds.max) {
+    square.position.z = squareStartZ;
   }
 
-  square.userData.vx = (square.position.x - oldX) / dt;
-  square.userData.vz = (square.position.z - oldZ) / dt;
+  square.userData.vx = squareSpeedX;
+  square.userData.vz = squareSpeedY;
+  updateAimMarker();
 
   for (let i = balls.length - 1; i >= 0; i -= 1) {
     const b = balls[i];
     const prevY = b.mesh.position.y;
+    const prevVy = b.vy;
     b.vy += gravity * dt;
+
+    if (!b.hasPeaked && prevVy > 0 && b.vy <= 0) {
+      b.hasPeaked = true;
+    }
 
     b.mesh.position.x += b.vx * dt;
     b.mesh.position.y += b.vy * dt;
@@ -230,8 +346,8 @@ function animate(nowMs) {
     const crossedTargetTop = prevY - ballRadius >= targetTopY && b.mesh.position.y - ballRadius <= targetTopY;
     const dx = b.mesh.position.x - targetPosition.x;
     const dz = b.mesh.position.z - targetPosition.z;
-    const radialHit = dx * dx + dz * dz <= targetRadius * targetRadius;
-    if (crossedTargetTop && radialHit && b.vy < 0) {
+    const footprintHit = Math.abs(dx) <= targetHalfWidth && Math.abs(dz) <= targetHalfDepth;
+    if (crossedTargetTop && footprintHit && b.hasPeaked && prevVy <= 0 && b.vy < 0) {
       score += 1;
       hitFlashTime = 0.18;
       scene.remove(b.mesh);
@@ -239,6 +355,16 @@ function animate(nowMs) {
       balls.splice(i, 1);
       continue;
     }
+
+    resolveBallBoxCollision(
+      b,
+      targetPosition.x,
+      targetPosition.y,
+      targetPosition.z,
+      targetHalfWidth,
+      targetHalfHeight,
+      targetHalfDepth
+    );
 
     const outOfBounds =
       Math.abs(b.mesh.position.x) > 20 ||
@@ -259,6 +385,10 @@ function animate(nowMs) {
     targetTopMaterial.color.setHex(0x37b866);
   } else {
     targetTopMaterial.color.setHex(0xcc4343);
+  }
+
+  if (cameraController) {
+    cameraController.update(dt);
   }
 
   info.textContent = "balls: " + balls.length + " | points: " + score;
