@@ -19,7 +19,7 @@
           <span id="velXVal">4.2</span>
         </label>
         <label>
-          <span>vel y (depth)</span>
+          <input id="aimPhi" type="range" min="-5" max="75" step="0.1" value="45" />
           <input id="velY" type="range" min="0" max="10" step="0.1" value="0" />
           <span id="velYVal">1.8</span>
         </label>
@@ -29,14 +29,19 @@
           <span id="aimThetaVal">0°</span>
         </label>
         <label>
-          <span>aim r</span>
-          <input id="aimR" type="range" min="0" max="12" step="0.1" value="8" />
-          <span id="aimRVal">8.0</span>
+          <span>v toward</span>
+          <input id="aimR" type="range" min="0" max="20" step="0.1" value="9.5" />
+          <span id="aimRVal">9.5</span>
         </label>
         <label>
-          <span>aim theta y</span>
-          <input id="aimPhi" type="range" min="-5" max="75" step="0.1" value="45" />
+          <span>theta up</span>
+          <input id="aimPhi" type="range" min="0" max="75" step="0.1" value="45" />
           <span id="aimPhiVal">45.0°</span>
+        </label>
+        <label>
+          <span>v up</span>
+          <input id="aimVUp" type="range" min="0" max="40" step="0.1" value="9.5" />
+          <span id="aimVUpVal">9.5</span>
         </label>
       </div>
       <div class="hud">

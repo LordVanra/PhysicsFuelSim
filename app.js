@@ -8,9 +8,11 @@ const velYVal = document.getElementById("velYVal");
 const aimThetaInput = document.getElementById("aimTheta");
 const aimRInput = document.getElementById("aimR");
 const aimPhiInput = document.getElementById("aimPhi");
+const aimVUpInput = document.getElementById("aimVUp");
 const aimThetaVal = document.getElementById("aimThetaVal");
 const aimRVal = document.getElementById("aimRVal");
 const aimPhiVal = document.getElementById("aimPhiVal");
+const aimVUpVal = document.getElementById("aimVUpVal");
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
 renderer.shadowMap.enabled = true;
@@ -221,11 +223,13 @@ const aimTubeDirection = new THREE.Vector3();
 
 function getDesiredAimPoint() {
   const thetaRad = (Number(aimThetaInput.value) * Math.PI) / 180;
-  const r = Math.max(aimMinRadius, Number(aimRInput.value));
   const phiRad = (Number(aimPhiInput.value) * Math.PI) / 180;
-  const offsetX = Math.sin(thetaRad) * r;
-  const offsetZ = Math.cos(thetaRad) * r;
-  const aimY = launchOriginY + Math.tan(phiRad) * r;
+  const previewDistance = targetPosition.z;
+  const dirX = Math.sin(thetaRad);
+  const dirZ = Math.cos(thetaRad);
+  const offsetX = dirX * previewDistance;
+  const offsetZ = dirZ * previewDistance;
+  const aimY = launchOriginY + Math.tan(phiRad) * previewDistance;
   return new THREE.Vector3(
     aimCenterX + offsetX,
     aimY,
@@ -248,17 +252,20 @@ function updateAimMarker() {
 
 function updateAimUIAndMarker() {
   const thetaDeg = Number(aimThetaInput.value);
-  const r = Number(aimRInput.value);
+  const towardSpeed = Number(aimRInput.value);
   const phiDeg = Number(aimPhiInput.value);
+  const vUp = Number(aimVUpInput.value);
   aimThetaVal.textContent = thetaDeg.toFixed(0) + "°";
-  aimRVal.textContent = r.toFixed(1);
+  aimRVal.textContent = towardSpeed.toFixed(1);
   aimPhiVal.textContent = phiDeg.toFixed(1) + "°";
+  aimVUpVal.textContent = vUp.toFixed(1);
   updateAimMarker();
 }
 
 aimThetaInput.addEventListener("input", updateAimUIAndMarker);
 aimRInput.addEventListener("input", updateAimUIAndMarker);
 aimPhiInput.addEventListener("input", updateAimUIAndMarker);
+aimVUpInput.addEventListener("input", updateAimUIAndMarker);
 updateAimUIAndMarker();
 
 function launchBall() {
@@ -275,22 +282,12 @@ function launchBall() {
   // Balls inherit the square's current motion at launch.
   const inheritedVx = square.userData.vx ?? squareSpeedX;
   const inheritedVz = square.userData.vz ?? squareSpeedY;
-  const aimPoint = getDesiredAimPoint();
-  const toTargetX = aimPoint.x - mesh.position.x;
-  const toTargetZ = aimPoint.z - mesh.position.z;
-  const horizontalDistance = Math.hypot(toTargetX, toTargetZ);
-  const gravityMag = -gravity;
-  const targetY = aimPoint.y + ballRadius * 0.3;
-  const toTargetY = targetY - mesh.position.y;
-  const minDescendingTime = Math.sqrt(Math.max(0, (2 * toTargetY) / gravityMag)) + 0.14;
-  const speedBasedTime = horizontalDistance / 9.5;
-  const travelTime = Math.max(minDescendingTime, Math.min(1.9, Math.max(1.05, speedBasedTime)));
-  const launchVy = (toTargetY - 0.5 * gravity * travelTime * travelTime) / travelTime;
-  const impartVx = toTargetX / travelTime;
-  const impartVy = launchVy;
-  const impartVz = toTargetZ / travelTime;
-  const maxVyForDescentAtImpact = gravityMag * travelTime - 0.25;
-  const adjustedVy = Math.min(launchVy, maxVyForDescentAtImpact);
+  const thetaRad = (Number(aimThetaInput.value) * Math.PI) / 180;
+  const towardSpeed = Math.max(aimMinRadius, Number(aimRInput.value));
+  const vUp = Number(aimVUpInput.value);
+  const impartVx = Math.sin(thetaRad) * towardSpeed;
+  const impartVy = vUp;
+  const impartVz = Math.cos(thetaRad) * towardSpeed;
   const launchVx = inheritedVx + impartVx;
   const launchVz = inheritedVz + impartVz;
 
@@ -303,7 +300,7 @@ function launchBall() {
   balls.push({
     mesh,
     vx: launchVx,
-    vy: adjustedVy,
+    vy: impartVy,
     vz: launchVz,
     bounces: 0,
     hasPeaked: false
