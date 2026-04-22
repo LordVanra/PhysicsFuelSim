@@ -7,8 +7,10 @@ const velXVal = document.getElementById("velXVal");
 const velYVal = document.getElementById("velYVal");
 const aimThetaInput = document.getElementById("aimTheta");
 const aimRInput = document.getElementById("aimR");
+const aimPhiInput = document.getElementById("aimPhi");
 const aimThetaVal = document.getElementById("aimThetaVal");
 const aimRVal = document.getElementById("aimRVal");
+const aimPhiVal = document.getElementById("aimPhiVal");
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
 renderer.shadowMap.enabled = true;
@@ -71,6 +73,28 @@ let squareSpeedY = Number(velYInput.value);
 square.position.set(squareStartX, squareBaseY, squareStartZ);
 scene.add(square);
 
+const aimTubePivot = new THREE.Object3D();
+aimTubePivot.position.set(0, 0.45, 0);
+square.add(aimTubePivot);
+
+const aimTubeMaterial = new THREE.MeshLambertMaterial({ color: 0x1f2933 });
+const aimTube = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.12, 0.16, 1.9, 14),
+  aimTubeMaterial
+);
+aimTube.castShadow = true;
+aimTube.receiveShadow = true;
+aimTube.position.y = 0.95;
+aimTubePivot.add(aimTube);
+
+const aimTubeTip = new THREE.Mesh(
+  new THREE.SphereGeometry(0.12, 12, 12),
+  new THREE.MeshLambertMaterial({ color: 0x354f6a })
+);
+aimTubeTip.castShadow = true;
+aimTubeTip.position.y = 1.9;
+aimTubePivot.add(aimTubeTip);
+
 function updateRobotSpeeds() {
   squareSpeedX = Number(velXInput.value);
   squareSpeedY = Number(velYInput.value);
@@ -84,12 +108,17 @@ updateRobotSpeeds();
 
 const targetWidth = 2;
 const targetDepth = 2;
-const targetHeight = 6;
+const targetHeight = 8.5;
 const targetTopY = targetHeight;
 const targetHalfWidth = targetWidth * 0.5;
 const targetHalfDepth = targetDepth * 0.5;
 const targetHalfHeight = targetHeight * 0.5;
-const targetPosition = new THREE.Vector3(0, targetHalfHeight, 8);
+const rimHeight = 1.5;
+const rimThickness = 0.25;
+const cavityHalfWidth = targetHalfWidth - rimThickness;
+const cavityHalfDepth = targetHalfDepth - rimThickness;
+const rimBaseY = targetTopY;
+const targetPosition = new THREE.Vector3(0, targetHalfHeight, 8.5);
 
 const targetTopMaterial = new THREE.MeshLambertMaterial({ color: 0xcc4343 });
 const targetTop = new THREE.Mesh(
@@ -100,6 +129,58 @@ targetTop.position.copy(targetPosition);
 targetTop.receiveShadow = true;
 targetTop.castShadow = true;
 scene.add(targetTop);
+
+const rimWallMaterial = new THREE.MeshLambertMaterial({ color: 0xb7663f });
+const rimWallColliders = [];
+
+function addRimWall(width, height, depth, x, z) {
+  const wall = new THREE.Mesh(
+    new THREE.BoxGeometry(width, height, depth),
+    rimWallMaterial
+  );
+  wall.position.set(x, rimBaseY + height * 0.5, z);
+  wall.castShadow = true;
+  wall.receiveShadow = true;
+  scene.add(wall);
+
+  rimWallColliders.push({
+    centerX: x,
+    centerY: wall.position.y,
+    centerZ: z,
+    halfWidth: width * 0.5,
+    halfHeight: height * 0.5,
+    halfDepth: depth * 0.5
+  });
+}
+
+addRimWall(
+  targetWidth,
+  rimHeight,
+  rimThickness,
+  targetPosition.x,
+  targetPosition.z - (targetHalfDepth - rimThickness * 0.5)
+);
+addRimWall(
+  targetWidth,
+  rimHeight,
+  rimThickness,
+  targetPosition.x,
+  targetPosition.z + (targetHalfDepth - rimThickness * 0.5)
+);
+addRimWall(
+  rimThickness,
+  rimHeight,
+  targetDepth - rimThickness * 2,
+  targetPosition.x - (targetHalfWidth - rimThickness * 0.5),
+  targetPosition.z
+);
+addRimWall(
+  rimThickness,
+  rimHeight,
+  targetDepth - rimThickness * 2,
+  targetPosition.x + (targetHalfWidth - rimThickness * 0.5),
+  targetPosition.z
+);
 
 const aimMarkerMaterial = new THREE.MeshLambertMaterial({ color: 0x2f556e });
 const aimMarkerRing = new THREE.Mesh(
@@ -123,44 +204,61 @@ const sharedBallGeometry = new THREE.SphereGeometry(ballRadius, 28, 28);
 const balls = [];
 let score = 0;
 let hitFlashTime = 0;
+let lastShotVelocityText = "impart v: n/a";
 
 const gravity = -32;
 const restitution = 0.6;
 const floorY = ballRadius;
 const targetCollisionRestitution = 0.44;
 const targetCollisionFriction = 0.92;
+const launchOriginY = 0;
 const aimMinRadius = 0;
 const aimCenterX = 0;
 const aimCenterZ = 0;
+const upAxis = new THREE.Vector3(0, 1, 0);
+const aimTubeWorldPos = new THREE.Vector3();
+const aimTubeDirection = new THREE.Vector3();
 
 function getDesiredAimPoint() {
   const thetaRad = (Number(aimThetaInput.value) * Math.PI) / 180;
   const r = Math.max(aimMinRadius, Number(aimRInput.value));
+  const phiRad = (Number(aimPhiInput.value) * Math.PI) / 180;
   const offsetX = Math.sin(thetaRad) * r;
   const offsetZ = Math.cos(thetaRad) * r;
+  const aimY = launchOriginY + Math.tan(phiRad) * r;
   return new THREE.Vector3(
     aimCenterX + offsetX,
-    targetTopY,
+    aimY,
     aimCenterZ + offsetZ
   );
 }
 
 function updateAimMarker() {
   const aimPoint = getDesiredAimPoint();
-  aimMarkerRing.position.set(aimPoint.x, targetTopY + 0.07, aimPoint.z);
-  aimMarkerDot.position.set(aimPoint.x, targetTopY + 0.15, aimPoint.z);
+  aimMarkerRing.position.set(aimPoint.x, aimPoint.y + 0.07, aimPoint.z);
+  aimMarkerDot.position.set(aimPoint.x, aimPoint.y + 0.15, aimPoint.z);
+
+  aimTubePivot.getWorldPosition(aimTubeWorldPos);
+  aimTubeDirection.subVectors(aimPoint, aimTubeWorldPos);
+  if (aimTubeDirection.lengthSq() > 0.000001) {
+    aimTubeDirection.normalize();
+    aimTubePivot.quaternion.setFromUnitVectors(upAxis, aimTubeDirection);
+  }
 }
 
 function updateAimUIAndMarker() {
   const thetaDeg = Number(aimThetaInput.value);
   const r = Number(aimRInput.value);
+  const phiDeg = Number(aimPhiInput.value);
   aimThetaVal.textContent = thetaDeg.toFixed(0) + "°";
   aimRVal.textContent = r.toFixed(1);
+  aimPhiVal.textContent = phiDeg.toFixed(1) + "°";
   updateAimMarker();
 }
 
 aimThetaInput.addEventListener("input", updateAimUIAndMarker);
 aimRInput.addEventListener("input", updateAimUIAndMarker);
+aimPhiInput.addEventListener("input", updateAimUIAndMarker);
 updateAimUIAndMarker();
 
 function launchBall() {
@@ -171,7 +269,7 @@ function launchBall() {
   mesh.castShadow = true;
   mesh.receiveShadow = true;
 
-  mesh.position.set(square.position.x, square.position.y + 0.62, square.position.z);
+  mesh.position.set(square.position.x, launchOriginY, square.position.z);
   scene.add(mesh);
 
   // Balls inherit the square's current motion at launch.
@@ -188,13 +286,25 @@ function launchBall() {
   const speedBasedTime = horizontalDistance / 9.5;
   const travelTime = Math.max(minDescendingTime, Math.min(1.9, Math.max(1.05, speedBasedTime)));
   const launchVy = (toTargetY - 0.5 * gravity * travelTime * travelTime) / travelTime;
+  const impartVx = toTargetX / travelTime;
+  const impartVy = launchVy;
+  const impartVz = toTargetZ / travelTime;
   const maxVyForDescentAtImpact = gravityMag * travelTime - 0.25;
-  const adjustedVy = Math.min(launchVy + (Math.random() * 0.12 - 0.06), maxVyForDescentAtImpact);
+  const adjustedVy = Math.min(launchVy, maxVyForDescentAtImpact);
+  const launchVx = inheritedVx + impartVx;
+  const launchVz = inheritedVz + impartVz;
+
+  lastShotVelocityText =
+    "impart v: (" +
+    impartVx.toFixed(2) + ", " +
+    impartVy.toFixed(2) + ", " +
+    impartVz.toFixed(2) + ")";
+
   balls.push({
     mesh,
-    vx: inheritedVx * 0.28 + (toTargetX / travelTime) + (Math.random() * 0.2 - 0.1),
+    vx: launchVx,
     vy: adjustedVy,
-    vz: inheritedVz * 0.28 + (toTargetZ / travelTime) + (Math.random() * 0.18 - 0.07),
+    vz: launchVz,
     bounces: 0,
     hasPeaked: false
   });
@@ -275,6 +385,7 @@ function resetScene() {
   }
   balls.length = 0;
   score = 0;
+  lastShotVelocityText = "impart v: n/a";
   square.position.set(squareStartX, squareBaseY, squareStartZ);
 }
 
@@ -346,8 +457,8 @@ function animate(nowMs) {
     const crossedTargetTop = prevY - ballRadius >= targetTopY && b.mesh.position.y - ballRadius <= targetTopY;
     const dx = b.mesh.position.x - targetPosition.x;
     const dz = b.mesh.position.z - targetPosition.z;
-    const footprintHit = Math.abs(dx) <= targetHalfWidth && Math.abs(dz) <= targetHalfDepth;
-    if (crossedTargetTop && footprintHit && b.hasPeaked && prevVy <= 0 && b.vy < 0) {
+    const cavityHit = Math.abs(dx) <= cavityHalfWidth && Math.abs(dz) <= cavityHalfDepth;
+    if (crossedTargetTop && cavityHit && b.hasPeaked && prevVy <= 0 && b.vy < 0) {
       score += 1;
       hitFlashTime = 0.18;
       scene.remove(b.mesh);
@@ -365,6 +476,18 @@ function animate(nowMs) {
       targetHalfHeight,
       targetHalfDepth
     );
+
+    for (const wall of rimWallColliders) {
+      resolveBallBoxCollision(
+        b,
+        wall.centerX,
+        wall.centerY,
+        wall.centerZ,
+        wall.halfWidth,
+        wall.halfHeight,
+        wall.halfDepth
+      );
+    }
 
     const outOfBounds =
       Math.abs(b.mesh.position.x) > 20 ||
@@ -391,7 +514,7 @@ function animate(nowMs) {
     cameraController.update(dt);
   }
 
-  info.textContent = "balls: " + balls.length + " | points: " + score;
+  info.textContent = "balls: " + balls.length + " | points: " + score + " | " + lastShotVelocityText;
   renderer.render(scene, camera);
 }
 
