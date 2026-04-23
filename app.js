@@ -2,17 +2,15 @@ const canvas = document.getElementById("c");
 const container = document.getElementById("container");
 const info = document.getElementById("info");
 const velXInput = document.getElementById("velX");
-const velYInput = document.getElementById("velY");
 const velXVal = document.getElementById("velXVal");
-const velYVal = document.getElementById("velYVal");
 const aimThetaInput = document.getElementById("aimTheta");
-const aimRInput = document.getElementById("aimR");
 const aimPhiInput = document.getElementById("aimPhi");
-const aimVUpInput = document.getElementById("aimVUp");
+const aimVInput = document.getElementById("aimV");
+const autoShootInput = document.getElementById("autoShoot");
 const aimThetaVal = document.getElementById("aimThetaVal");
-const aimRVal = document.getElementById("aimRVal");
 const aimPhiVal = document.getElementById("aimPhiVal");
-const aimVUpVal = document.getElementById("aimVUpVal");
+const aimVVal = document.getElementById("aimVVal");
+const autoShootVal = document.getElementById("autoShootVal");
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
 renderer.shadowMap.enabled = true;
@@ -66,12 +64,11 @@ const square = new THREE.Mesh(
 );
 square.castShadow = true;
 const squareBaseY = 0.3;
-const xBounds = { min: -5.5, max: 5.5 };
-const zBounds = { min: -2.8, max: 3.8 };
+const xBounds = { min: -2, max: 2 };
 const squareStartX = xBounds.min;
-const squareStartZ = zBounds.min;
+const squareStartZ = 0;
 let squareSpeedX = Number(velXInput.value);
-let squareSpeedY = Number(velYInput.value);
+let squareSpeedY = 0;
 square.position.set(squareStartX, squareBaseY, squareStartZ);
 scene.add(square);
 
@@ -99,28 +96,26 @@ aimTubePivot.add(aimTubeTip);
 
 function updateRobotSpeeds() {
   squareSpeedX = Number(velXInput.value);
-  squareSpeedY = Number(velYInput.value);
   velXVal.textContent = squareSpeedX.toFixed(1);
-  velYVal.textContent = squareSpeedY.toFixed(1);
 }
 
 velXInput.addEventListener("input", updateRobotSpeeds);
-velYInput.addEventListener("input", updateRobotSpeeds);
 updateRobotSpeeds();
 
-const targetWidth = 2;
-const targetDepth = 2;
-const targetHeight = 8.5;
-const targetTopY = targetHeight;
+const targetWidth = 4;
+const targetDepth = 4;
+const targetHeight = 3;
+const targetCenterY = 8.5;
 const targetHalfWidth = targetWidth * 0.5;
 const targetHalfDepth = targetDepth * 0.5;
 const targetHalfHeight = targetHeight * 0.5;
+const targetTopY = targetCenterY + targetHalfHeight;
 const rimHeight = 1.5;
 const rimThickness = 0.25;
 const cavityHalfWidth = targetHalfWidth - rimThickness;
 const cavityHalfDepth = targetHalfDepth - rimThickness;
 const rimBaseY = targetTopY;
-const targetPosition = new THREE.Vector3(0, targetHalfHeight, 8.5);
+const targetPosition = new THREE.Vector3(0, targetCenterY, 8.5);
 
 const targetTopMaterial = new THREE.MeshLambertMaterial({ color: 0xcc4343 });
 const targetTop = new THREE.Mesh(
@@ -200,7 +195,7 @@ const aimMarkerDot = new THREE.Mesh(
 aimMarkerDot.castShadow = true;
 scene.add(aimMarkerDot);
 
-const ballRadius = 0.5;
+const ballRadius = 0.25;
 const sharedBallGeometry = new THREE.SphereGeometry(ballRadius, 28, 28);
 
 const balls = [];
@@ -214,7 +209,7 @@ const floorY = ballRadius;
 const targetCollisionRestitution = 0.44;
 const targetCollisionFriction = 0.92;
 const launchOriginY = 0;
-const aimMinRadius = 0;
+const aimMinSpeed = 0;
 const aimCenterX = 0;
 const aimCenterZ = 0;
 const upAxis = new THREE.Vector3(0, 1, 0);
@@ -252,21 +247,25 @@ function updateAimMarker() {
 
 function updateAimUIAndMarker() {
   const thetaDeg = Number(aimThetaInput.value);
-  const towardSpeed = Number(aimRInput.value);
   const phiDeg = Number(aimPhiInput.value);
-  const vUp = Number(aimVUpInput.value);
+  const speed = Number(aimVInput.value);
   aimThetaVal.textContent = thetaDeg.toFixed(0) + "°";
-  aimRVal.textContent = towardSpeed.toFixed(1);
   aimPhiVal.textContent = phiDeg.toFixed(1) + "°";
-  aimVUpVal.textContent = vUp.toFixed(1);
+  aimVVal.textContent = speed.toFixed(1);
   updateAimMarker();
 }
 
 aimThetaInput.addEventListener("input", updateAimUIAndMarker);
-aimRInput.addEventListener("input", updateAimUIAndMarker);
 aimPhiInput.addEventListener("input", updateAimUIAndMarker);
-aimVUpInput.addEventListener("input", updateAimUIAndMarker);
+aimVInput.addEventListener("input", updateAimUIAndMarker);
 updateAimUIAndMarker();
+
+function updateAutoShootUI() {
+  autoShootVal.textContent = autoShootInput.checked ? "on" : "off";
+}
+
+autoShootInput.addEventListener("change", updateAutoShootUI);
+updateAutoShootUI();
 
 function launchBall() {
   const mesh = new THREE.Mesh(
@@ -279,17 +278,16 @@ function launchBall() {
   mesh.position.set(square.position.x, launchOriginY, square.position.z);
   scene.add(mesh);
 
-  // Balls inherit the square's current motion at launch.
-  const inheritedVx = square.userData.vx ?? squareSpeedX;
-  const inheritedVz = square.userData.vz ?? squareSpeedY;
   const thetaRad = (Number(aimThetaInput.value) * Math.PI) / 180;
-  const towardSpeed = Math.max(aimMinRadius, Number(aimRInput.value));
-  const vUp = Number(aimVUpInput.value);
+  const phiRad = (Number(aimPhiInput.value) * Math.PI) / 180;
+  const speed = Math.max(aimMinSpeed, Number(aimVInput.value));
+  const towardSpeed = speed * Math.cos(phiRad);
+  const vUp = speed * Math.sin(phiRad);
   const impartVx = Math.sin(thetaRad) * towardSpeed;
   const impartVy = vUp;
   const impartVz = Math.cos(thetaRad) * towardSpeed;
-  const launchVx = inheritedVx + impartVx;
-  const launchVz = inheritedVz + impartVz;
+  const launchVx = impartVx;
+  const launchVz = impartVz;
 
   lastShotVelocityText =
     "impart v: (" +
@@ -409,21 +407,25 @@ function animate(nowMs) {
   const now = nowMs * 0.001;
   const dt = Math.min(0.033, Math.max(0.001, now - previous));
   previous = now;
+  const previousSquareX = square.position.x;
+  const nextSquareX = previousSquareX + squareSpeedX * dt;
+  const wrappedX = nextSquareX > xBounds.max;
 
-  square.position.x += squareSpeedX * dt;
-  square.position.z += squareSpeedY * dt;
+  square.position.x = wrappedX ? squareStartX : nextSquareX;
+  square.position.z = squareStartZ;
   square.position.y = squareBaseY;
 
-  if (square.position.x > xBounds.max) {
-    square.position.x = squareStartX;
-  }
-
-  if (square.position.z > zBounds.max) {
-    square.position.z = squareStartZ;
-  }
-
   square.userData.vx = squareSpeedX;
-  square.userData.vz = squareSpeedY;
+  square.userData.vz = 0;
+
+  const crossedOriginX =
+    !wrappedX &&
+    ((previousSquareX < 0 && square.position.x >= 0) ||
+      (previousSquareX > 0 && square.position.x <= 0));
+  if (autoShootInput.checked && crossedOriginX) {
+    launchBall();
+  }
+
   updateAimMarker();
 
   for (let i = balls.length - 1; i >= 0; i -= 1) {
